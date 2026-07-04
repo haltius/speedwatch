@@ -1,0 +1,18 @@
+SpeedWatch Summary Report — generated 2026-07-04T18:59:22.754874
+Total successful tests: 1
+Date range: 2026-07-04 18:52:26.445204-04:00 to 2026-07-04 18:52:26.445204-04:00
+
+Average download: 539.19 Mbps (min 539.19, max 539.19)
+Average upload:   49.07 Mbps (min 49.07, max 49.07)
+Average ping:     22.22 ms
+
+Tests below 50% of advertised download (75.0 Mbps): 0 of 1 (0.0%)
+
+Three worst average hours (local time) for download speed:
+  18:00 - avg 539.19 Mbps
+Three best average hours (local time) for download speed:
+  18:00 - avg 539.19 Mbps
+
+Tests with an independently-verifiable Ookla result URL: 1 of 1 (100.0%)
+Each URL is hosted on Ookla's own servers — not editable from this tool — and can be opened directly to confirm the recorded speed, ISP, and timestamp independently.
+Run `python verify_integrity.py` to check the tamper-evident hash chain across all logged rows (detects any row edited after being written).

@@ -1,0 +1,2 @@
+id,timestamp_utc,download_mbps,upload_mbps,ping_ms,jitter_ms,server_name,server_id,server_country,client_isp,client_ip,result_url,result_id,error,row_hash,prev_hash,hour,date
+1,2026-07-04 22:52:26.445204,539.19,49.07,22.22,52.66,Rogers Wireless,46125,"Kitchener, ON",Rogers Cable,99.251.125.74,https://www.speedtest.net/result/c/528e0edd-0c64-4ae1-b8f8-2245e72e6aa9,528e0edd-0c64-4ae1-b8f8-2245e72e6aa9,,3584e251a377f36fd97f5287d9e64967402413293114fde645993b29105fac1f,GENESIS,18,2026-07-04
