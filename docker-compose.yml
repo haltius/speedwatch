@@ -7,8 +7,8 @@ services:
       # How often to run a full speed test, in minutes.
       - INTERVAL_MINUTES=30
       # Your contracted plan speeds, used by analyze.py for shortfall analysis.
-      - ADVERTISED_DOWN_MBPS=150
-      - ADVERTISED_UP_MBPS=10
+      - ADVERTISED_DOWN_MBPS=1500
+      - ADVERTISED_UP_MBPS=50
       # Timezone used when bucketing results by hour of day (important for
       # spotting time-of-day throttling patterns correctly).
       - TZ=America/Toronto
