@@ -31,6 +31,80 @@ evidence for an ISP complaint in Canada (CCTS or CRTC — see note below).
 > project was archived by its maintainer in January 2026 and now gets
 > blocked (HTTP 403) by Ookla's servers.
 
+## Detecting Wi-Fi vs Ethernet
+
+Nothing running *inside* the Docker container can see this — a container
+only ever gets a virtual network interface from the container runtime
+(true for Docker Desktop, and equally true for Apple's native
+`apple/container` tool, since both still put each container behind a VM
+boundary with its own `vmnet`-assigned interface). Whether the Mac itself
+is on Wi-Fi or Ethernet only exists in macOS, so this piece runs natively
+on the host, outside Docker entirely.
+
+**What it checks**, in `host-scripts/detect_connection.sh`:
+1. Which interface currently holds the **default route** — i.e. the one
+   actually carrying traffic right now, not just any interface that
+   happens to be up.
+2. Looks that interface up in `networksetup -listallhardwareports`, macOS's
+   own hardware inventory, to get its real name ("Wi-Fi", "Thunderbolt
+   Ethernet", "USB 10/100/1000 LAN", etc.) rather than just a device ID
+   like `en0`.
+3. As an independent second check, asks
+   `networksetup -getairportnetwork` whether that interface has an
+   associated Wi-Fi network — Wi-Fi interfaces answer with an SSID,
+   Ethernet interfaces refuse the question outright. When both checks
+   agree, the row is logged as `confidence=confirmed`; if only one check
+   could weigh in, it's logged as `single_check_only`.
+
+Results append to `./data/connection_log.csv` (same shared folder Docker
+uses), so `analyze.py` can read it even though it runs inside the
+container and the script runs outside it.
+
+### One-time setup
+
+```bash
+cd speedwatch/host-scripts
+chmod +x detect_connection.sh
+
+# quick manual test first — you should see a line like:
+#   [2026-07-05T14:30:00Z] en5 -> Thunderbolt Ethernet -> ethernet (confirmed)
+./detect_connection.sh
+```
+
+Then set it to run automatically every 5 minutes via `launchd`:
+
+```bash
+# edit com.speedwatch.connectioncheck.plist first: replace
+# /ABSOLUTE/PATH/TO/speedwatch with your actual path, e.g.
+#   $(pwd)/.. if you're still in host-scripts/
+sed -i '' "s|/ABSOLUTE/PATH/TO/speedwatch|$(cd .. && pwd)|g" com.speedwatch.connectioncheck.plist
+
+cp com.speedwatch.connectioncheck.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.speedwatch.connectioncheck.plist
+
+# confirm it's running
+launchctl list | grep speedwatch
+tail -f /tmp/speedwatch-connectioncheck.log
+```
+
+To stop it later: `launchctl unload ~/Library/LaunchAgents/com.speedwatch.connectioncheck.plist`
+
+### How it shows up in reports
+
+`analyze.py` automatically matches each speed test to the nearest
+connection-log entry within 10 minutes (configurable via
+`CONNECTION_MATCH_TOLERANCE_MINUTES`) and:
+- Color-codes `timeseries.png` — blue points are confirmed Ethernet, red
+  are Wi-Fi, gray is unconfirmed/unknown
+- Reports a connection-type breakdown in `summary.txt`, including the
+  **average download speed on confirmed-Ethernet tests only** — this
+  subset is your strongest evidence, since it rules out Wi-Fi variance as
+  an alternative explanation for a shortfall entirely
+
+If you haven't set this up yet, everything above still works — it just
+reports `connection_type: unknown` for all rows until the host script
+starts logging.
+
 ## Proving the data itself isn't fabricated
 
 A local SQLite file is trivially editable — "the database says X" isn't

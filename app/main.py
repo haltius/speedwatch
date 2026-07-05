@@ -15,9 +15,30 @@ import hashlib
 import sqlite3
 import datetime
 import subprocess
-import traceback
 
 import network_check
+
+import logging
+
+logger = logging.getLogger('speedwatch')
+logger.setLevel(logging.DEBUG)
+
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.ERROR)
+
+# create file handler which logs even debug messages
+fh = logging.FileHandler('/data/speedwatch.log')
+fh.setLevel(logging.DEBUG)
+
+# create formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+fh.setFormatter(formatter)
+# add the handlers to logger
+logger.addHandler(ch)
+logger.addHandler(fh)
+
 
 DB_PATH = os.environ.get("DB_PATH", "/data/speedwatch.db")
 INTERVAL_MINUTES = float(os.environ.get("INTERVAL_MINUTES", "30"))
@@ -30,6 +51,39 @@ SPEEDTEST_TIMEOUT_SECONDS = int(os.environ.get("SPEEDTEST_TIMEOUT_SECONDS", "120
 # are a bit heavier than a plain speed test.
 NETWORK_CHECK_INTERVAL_HOURS = float(os.environ.get("NETWORK_CHECK_INTERVAL_HOURS", "12"))
 
+CONNECTION_LOG_PATH = os.environ.get("CONNECTION_LOG_PATH", "/data/connection_log.csv")
+CONNECTION_MAX_AGE_MINUTES = float(os.environ.get("CONNECTION_MAX_AGE_MINUTES", "10"))
+
+def get_latest_connection_info() -> dict:
+    """
+    Read the most recent row written by the host-side detect_connection.sh
+    (via launchd, independent of this container) and attach it if it's
+    recent enough to actually describe this moment.
+    """
+    if not os.path.exists(CONNECTION_LOG_PATH):
+        return {"connection_type": "unknown", "connection_confidence": "no_data"}
+    try:
+        with open(CONNECTION_LOG_PATH, "r") as f:
+            lines = f.read().strip().split("\n")
+        if len(lines) < 2:
+            return {"connection_type": "unknown", "connection_confidence": "no_data"}
+
+        import csv
+        header = lines[0].split(",")
+        fields = next(csv.reader([lines[-1]]))
+        row = dict(zip(header, fields))
+
+        ts = datetime.datetime.fromisoformat(row["timestamp_utc"].replace("Z", "+00:00"))
+        age = datetime.datetime.now(datetime.timezone.utc) - ts
+        if age > datetime.timedelta(minutes=CONNECTION_MAX_AGE_MINUTES):
+            return {"connection_type": "unknown", "connection_confidence": "stale"}
+
+        return {
+            "connection_type": row.get("connection_type", "unknown"),
+            "connection_confidence": row.get("confidence", "no_data"),
+        }
+    except Exception:
+        return {"connection_type": "unknown", "connection_confidence": "no_data"}
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.execute(
@@ -50,7 +104,9 @@ def init_db(conn: sqlite3.Connection) -> None:
             result_id TEXT,
             error TEXT,
             row_hash TEXT,
-            prev_hash TEXT
+            prev_hash TEXT,
+            connection_type TEXT,
+            connection_confidence TEXT
         )
         """
     )
@@ -178,14 +234,15 @@ def log_network_check(conn: sqlite3.Connection, evidence: dict, linked_result_id
     conn.execute(
         """
         INSERT INTO network_checks
-            (timestamp_utc, linked_result_id, public_ip, reverse_dns, whois_org, whois_raw, traceroute_raw)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (timestamp_utc, linked_result_id, public_ip, reverse_dns, whois_org, whois_raw, traceroute_raw, connection_type, connection_confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.datetime.utcnow().isoformat(), linked_result_id,
             evidence.get("public_ip"), evidence.get("reverse_dns"),
             evidence.get("whois_org"), evidence.get("whois_raw"),
             evidence.get("traceroute_raw"),
+            evidence.get("connection_type"), evidence.get("connection_confidence")
         ),
     )
     conn.commit()
@@ -208,7 +265,7 @@ def log_error(conn: sqlite3.Connection, message: str) -> None:
 def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    print(f"[speedwatch] logging to {DB_PATH}, interval={INTERVAL_MINUTES} min", flush=True)
+    logger.info(f"[speedwatch] logging to {DB_PATH}, interval={INTERVAL_MINUTES} min")
 
     last_network_check = None
 
@@ -219,19 +276,20 @@ def main() -> None:
         while attempt <= MAX_RETRIES:
             try:
                 row = run_speedtest()
+                row = run_speedtest()
+                row.update(get_latest_connection_info())
                 result_id = log_result(conn, row)
-                print(
+                logger.info(
                     f"[speedwatch] {row['timestamp_utc']} "
                     f"down={row['download_mbps']}Mbps up={row['upload_mbps']}Mbps "
                     f"ping={row['ping_ms']}ms",
-                    flush=True,
                 )
                 break
             except Exception as e:
                 attempt += 1
                 err = f"{type(e).__name__}: {e}"
-                print(f"[speedwatch] ERROR (attempt {attempt}): {err}", flush=True)
-                traceback.print_exc()
+                logger.error(f"[speedwatch] ERROR (attempt {attempt}): {err}")
+                logger.exception("Full traceback:")   # <-- replaces traceback.print_exc()
                 if attempt > MAX_RETRIES:
                     log_error(conn, err)
                 else:
@@ -245,16 +303,15 @@ def main() -> None:
         if due:
             public_ip = row.get("client_ip") if row else None
             try:
-                print(f"[speedwatch] running network provenance check (ip={public_ip})...", flush=True)
+                logger.info(f"[speedwatch] running network provenance check (ip={public_ip})...")
                 evidence = network_check.gather_network_evidence(public_ip)
                 log_network_check(conn, evidence, linked_result_id=result_id)
-                print(
+                logger.info(
                     f"[speedwatch] network check: rdns={evidence.get('reverse_dns')} "
                     f"whois_org={evidence.get('whois_org')} linked_result_id={result_id}",
-                    flush=True,
                 )
             except Exception as e:
-                print(f"[speedwatch] network check failed: {e}", flush=True)
+                logger.error(f"[speedwatch] network check failed: {e}")
             last_network_check = now
 
         time.sleep(max(INTERVAL_MINUTES, 1) * 60)

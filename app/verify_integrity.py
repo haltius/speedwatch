@@ -20,6 +20,11 @@ whole case.
 import os
 import sqlite3
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 import main as sw_main  # reuses _compute_row_hash so the check matches how hashes were made
 
 DB_PATH = os.environ.get("DB_PATH", "/data/speedwatch.db")
@@ -38,7 +43,7 @@ def verify() -> None:
     conn.close()
 
     if not rows:
-        print("No rows to verify yet.")
+        logger.info("No rows to verify yet.")
         return
 
     expected_prev = "GENESIS"
@@ -51,7 +56,7 @@ def verify() -> None:
 
         if row_hash is None:
             # Rows written before the hash chain feature existed.
-            print(f"  #{rid}: no hash recorded (predates integrity chain) — skipping")
+            logger.info(f"  #{rid}: no hash recorded (predates integrity chain) — skipping")
             expected_prev = "GENESIS"  # chain effectively restarts here
             continue
 
@@ -73,15 +78,15 @@ def verify() -> None:
 
         expected_prev = row_hash
 
-    print(f"Checked {len(rows)} rows.")
+    logger.info(f"Checked {len(rows)} rows.")
     if not breaks:
-        print("Chain intact — no evidence of post-hoc editing found.")
+        logger.info("Chain intact — no evidence of post-hoc editing found.")
     else:
-        print(f"FOUND {len(breaks)} BREAK(S):")
+        logger.warning(f"FOUND {len(breaks)} BREAK(S):")
         for rid, reason, stored, expected in breaks:
-            print(f"  Row #{rid}: {reason}")
-            print(f"    stored:   {stored}")
-            print(f"    expected: {expected}")
+            logger.warning(f"  Row #{rid}: {reason}")
+            logger.warning(f"    stored:   {stored}")
+            logger.warning(f"    expected: {expected}")
 
 
 if __name__ == "__main__":

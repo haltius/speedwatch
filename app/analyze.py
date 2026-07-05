@@ -19,6 +19,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 DB_PATH = os.environ.get("DB_PATH", "/data/speedwatch.db")
 OUT_DIR = os.environ.get("OUT_DIR", "/data/reports")
 
@@ -315,25 +320,25 @@ def main():
     summary_path = summary_report(df)
     network_path = export_network_evidence()
 
-    print("Generated:")
+    logger.info("Generated:")
     for p in [csv_path, ts_path, hourly_path, pj_path, summary_path, network_path]:
         if p:
-            print(f"  {p}")
+            logger.info(f"  {p}")
     if network_path is None:
-        print("  (no network_checks data yet — let the container run a bit longer)")
+        logger.info("  (no network_checks data yet — let the container run a bit longer)")
 
     snapshot_path = export_timestamp_snapshot(df)
-    print(f"  {snapshot_path} (immutable snapshot for timestamping)")
+    logger.info(f"  {snapshot_path} (immutable snapshot for timestamping)")
     stamp_result = stamp_file(snapshot_path)
     if stamp_result["success"]:
-        print(f"  {stamp_result['ots_path']} (OpenTimestamps proof — pending Bitcoin confirmation)")
-        print(
+        logger.info(f"  {stamp_result['ots_path']} (OpenTimestamps proof — pending Bitcoin confirmation)")
+        logger.info(
             "    Run `python manage_timestamps.py upgrade` in a few hours "
             "to attempt to finalize this proof, then `verify` to confirm."
         )
     else:
-        print(f"  OpenTimestamps stamping failed: {stamp_result['message']}")
-        print("  (needs outbound internet to OpenTimestamps calendar servers — safe to ignore if offline)")
+        logger.warning(f"  OpenTimestamps stamping failed: {stamp_result['message']}")
+        logger.warning("  (needs outbound internet to OpenTimestamps calendar servers — safe to ignore if offline)")
 
 
 if __name__ == "__main__":

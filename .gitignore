@@ -1,0 +1,9 @@
+gitignore# Runtime data — DB, logs, exports, snapshots, evidence
+data/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local overrides, if you ever add one
+.env

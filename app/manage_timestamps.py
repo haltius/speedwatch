@@ -17,6 +17,11 @@ import sys
 import glob
 import subprocess
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 OUT_DIR = os.environ.get("OUT_DIR", "/data/reports")
 SNAPSHOT_DIR = os.path.join(OUT_DIR, "snapshots")
 
@@ -28,35 +33,35 @@ def find_ots_files():
 def upgrade_all(timeout: int = 30):
     ots_files = find_ots_files()
     if not ots_files:
-        print("No .ots proofs found yet — run analyze.py first.")
+        logger.warning("No .ots proofs found yet — run analyze.py first.")
         return
     for f in ots_files:
-        print(f"Upgrading {os.path.basename(f)} ...")
+        logger.info(f"Upgrading {os.path.basename(f)} ...")
         try:
             proc = subprocess.run(
                 ["ots", "upgrade", f], capture_output=True, text=True, timeout=timeout
             )
             out = (proc.stdout.strip() or proc.stderr.strip())
-            print(f"  {out}" if out else "  (no output)")
+            logger.info(f"  {out}" if out else "  (no output)")
         except Exception as e:
-            print(f"  failed: {e}")
+            logger.error(f"  failed: {e}")
 
 
 def verify_all(timeout: int = 30):
     ots_files = find_ots_files()
     if not ots_files:
-        print("No .ots proofs found yet — run analyze.py first.")
+        logger.warning("No .ots proofs found yet — run analyze.py first.")
         return
     for f in ots_files:
-        print(f"Verifying {os.path.basename(f)} ...")
+        logger.info(f"Verifying {os.path.basename(f)} ...")
         try:
             proc = subprocess.run(
                 ["ots", "verify", f], capture_output=True, text=True, timeout=timeout
             )
             out = (proc.stdout.strip() or proc.stderr.strip())
-            print(f"  {out}" if out else "  (no output)")
+            logger.info(f"  {out}" if out else "  (no output)")
         except Exception as e:
-            print(f"  failed: {e}")
+            logger.error(f"  failed: {e}")
 
 
 if __name__ == "__main__":
@@ -67,5 +72,4 @@ if __name__ == "__main__":
         verify_all()
     else:
         upgrade_all()
-        print()
         verify_all()

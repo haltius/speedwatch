@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.speedwatch.connectioncheck.plist
+
+  Runs detect_connection.sh every 5 minutes, independent of Docker.
+  Install into ~/Library/LaunchAgents/ (see README section
+  "Detecting Wi-Fi vs Ethernet" for full setup instructions).
+
+  IMPORTANT: replace /ABSOLUTE/PATH/TO/speedwatch below with the actual
+  absolute path to your speedwatch folder before installing — launchd
+  does not expand ~ or relative paths.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.speedwatch.connectioncheck</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/jyothi/tech/speedwatch/host-scripts/detect_connection.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/speedwatch-connectioncheck.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/speedwatch-connectioncheck.err</string>
+</dict>
+</plist>
