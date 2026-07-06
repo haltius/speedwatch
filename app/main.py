@@ -215,15 +215,17 @@ def log_result(conn: sqlite3.Connection, row: dict) -> int:
         INSERT INTO results
             (timestamp_utc, download_mbps, upload_mbps, ping_ms, jitter_ms,
              server_name, server_id, server_country, client_isp, client_ip,
-             result_url, result_id, error, row_hash, prev_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             result_url, result_id, error, row_hash, prev_hash, connection_type,
+             connection_confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             row["timestamp_utc"], row["download_mbps"], row["upload_mbps"],
             row["ping_ms"], row["jitter_ms"], row["server_name"],
             row["server_id"], row["server_country"], row["client_isp"],
             row["client_ip"], row.get("result_url"), row.get("result_id"),
-            row["error"], row_hash, prev_hash,
+            row["error"], row_hash, prev_hash, row.get("connection_type"),
+            row.get("connection_confidence"),
         ),
     )
     conn.commit()
@@ -234,15 +236,14 @@ def log_network_check(conn: sqlite3.Connection, evidence: dict, linked_result_id
     conn.execute(
         """
         INSERT INTO network_checks
-            (timestamp_utc, linked_result_id, public_ip, reverse_dns, whois_org, whois_raw, traceroute_raw, connection_type, connection_confidence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (timestamp_utc, linked_result_id, public_ip, reverse_dns, whois_org, whois_raw, traceroute_raw)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.datetime.utcnow().isoformat(), linked_result_id,
             evidence.get("public_ip"), evidence.get("reverse_dns"),
             evidence.get("whois_org"), evidence.get("whois_raw"),
             evidence.get("traceroute_raw"),
-            evidence.get("connection_type"), evidence.get("connection_confidence")
         ),
     )
     conn.commit()
@@ -275,7 +276,6 @@ def main() -> None:
         result_id = None
         while attempt <= MAX_RETRIES:
             try:
-                row = run_speedtest()
                 row = run_speedtest()
                 row.update(get_latest_connection_info())
                 result_id = log_result(conn, row)
