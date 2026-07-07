@@ -17,6 +17,7 @@ import datetime
 import subprocess
 
 import network_check
+import threading
 
 import logging
 
@@ -53,6 +54,39 @@ NETWORK_CHECK_INTERVAL_HOURS = float(os.environ.get("NETWORK_CHECK_INTERVAL_HOUR
 
 CONNECTION_LOG_PATH = os.environ.get("CONNECTION_LOG_PATH", "/data/connection_log.csv")
 CONNECTION_MAX_AGE_MINUTES = float(os.environ.get("CONNECTION_MAX_AGE_MINUTES", "10"))
+
+# --- Watchdog: detects a hung main loop and forces a restart ---
+# Docker's `restart: unless-stopped` only recovers from a process that
+# actually crashes — it does nothing for one that's alive but stuck (e.g.
+# blocked on a wedged bind mount). This makes a hang visible in the logs
+# and forces a hard exit so the restart policy has something to react to.
+_last_heartbeat = time.time()
+_heartbeat_lock = threading.Lock()
+
+def _touch_heartbeat():
+    global _last_heartbeat
+    with _heartbeat_lock:
+        _last_heartbeat = time.time()
+
+WATCHDOG_CHECK_SECONDS = int(os.environ.get("WATCHDOG_CHECK_SECONDS", "60"))
+WATCHDOG_STUCK_THRESHOLD_SECONDS = max(
+    INTERVAL_MINUTES * 60 * 3,        # 3 missed cycles
+    SPEEDTEST_TIMEOUT_SECONDS * 2,    # or 2x the speedtest's own timeout, whichever's bigger
+)
+
+def _watchdog_loop():
+    while True:
+        time.sleep(WATCHDOG_CHECK_SECONDS)
+        with _heartbeat_lock:
+            age = time.time() - _last_heartbeat
+        if age > WATCHDOG_STUCK_THRESHOLD_SECONDS:
+            logger.critical(
+                f"[watchdog] no heartbeat in {age:.0f}s "
+                f"(threshold {WATCHDOG_STUCK_THRESHOLD_SECONDS:.0f}s) — "
+                f"main loop appears stuck. Forcing exit so Docker can restart it."
+            )
+            os._exit(1)  # hard kill — bypasses cleanup on purpose, in case
+                         # normal shutdown would also hang on the same stuck I/O
 
 def get_latest_connection_info() -> dict:
     """
@@ -268,9 +302,12 @@ def main() -> None:
     init_db(conn)
     logger.info(f"[speedwatch] logging to {DB_PATH}, interval={INTERVAL_MINUTES} min")
 
+    threading.Thread(target=_watchdog_loop, daemon=True).start()
+
     last_network_check = None
 
     while True:
+        _touch_heartbeat()
         attempt = 0
         row = None
         result_id = None
