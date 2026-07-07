@@ -75,8 +75,26 @@ WATCHDOG_STUCK_THRESHOLD_SECONDS = max(
 )
 
 def _watchdog_loop():
+    last_check = time.time()
     while True:
         time.sleep(WATCHDOG_CHECK_SECONDS)
+        now = time.time()
+        gap_since_last_check = now - last_check
+        last_check = now
+
+        # If the watchdog's own sleep took much longer than requested, the
+        # whole system (not just our loop) was suspended — e.g. the Mac
+        # went to sleep. That's not a hang, so reset and move on instead
+        # of force-killing a perfectly healthy process.
+        if gap_since_last_check > WATCHDOG_CHECK_SECONDS * 3:
+            logger.warning(
+                f"[watchdog] detected a {gap_since_last_check:.0f}s gap in its own "
+                f"check cycle (expected {WATCHDOG_CHECK_SECONDS}s) — system was "
+                f"likely asleep, not stuck. Resetting heartbeat."
+            )
+            _touch_heartbeat()
+            continue
+
         with _heartbeat_lock:
             age = time.time() - _last_heartbeat
         if age > WATCHDOG_STUCK_THRESHOLD_SECONDS:
@@ -85,8 +103,7 @@ def _watchdog_loop():
                 f"(threshold {WATCHDOG_STUCK_THRESHOLD_SECONDS:.0f}s) — "
                 f"main loop appears stuck. Forcing exit so Docker can restart it."
             )
-            os._exit(1)  # hard kill — bypasses cleanup on purpose, in case
-                         # normal shutdown would also hang on the same stuck I/O
+            os._exit(1)
 
 def get_latest_connection_info() -> dict:
     """
